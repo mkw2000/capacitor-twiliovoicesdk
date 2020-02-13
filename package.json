@@ -1,0 +1,46 @@
+{
+  "name": "capacitor-twiliovoicesdk",
+  "version": "0.0.1",
+  "description": "Capacitor plugin for Twilio Programmable Voice SDK",
+  "main": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "scripts": {
+    "build": "npm run clean && tsc",
+    "clean": "rimraf ./dist",
+    "watch": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "Michael Weiner",
+  "license": "WTFPL",
+  "dependencies": {
+    "@capacitor/core": "latest"
+  },
+  "devDependencies": {
+    "rimraf": "^3.0.0",
+    "typescript": "^3.2.4",
+    "@capacitor/ios": "latest",
+    "@capacitor/android": "latest"
+  },
+  "files": [
+    "dist/",
+    "ios/",
+    "CapacitorTwiliovoicesdk.podspec"
+  ],
+  "keywords": [
+    "capacitor",
+    "plugin",
+    "native"
+  ],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mkw2000/capacitor-twiliovoicesdk"
+  },
+  "bugs": {
+    "url": "https://github.com/mkw2000/capacitor-twiliovoicesdk/issues"
+  }
+}
