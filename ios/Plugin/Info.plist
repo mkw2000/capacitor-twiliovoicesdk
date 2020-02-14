@@ -20,5 +20,14 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSPrincipalClass</key>
 	<string></string>
+	<key>TVPIncomingCallAppName</key>
+  	<string>$INCOMING_CALL_APP_NAME</string>
+	<key>UIBackgroundModes</key>
+  	<array>
+    <string>voip</string>
+    <string>audio</string>
+	<key>TVPEnableCallKit</key>
+  	<string>$ENABLE_CALL_KIT</string>
+  	</array>
 </dict>
 </plist>
