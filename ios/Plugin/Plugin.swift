@@ -1,796 +1,881 @@
 import Foundation
 import Capacitor
+import UIKit
 import AVFoundation
-import CallKit
 import PushKit
+import CallKit
 import TwilioVoice
-import UserNotifications
 
-
-private let kTwimlParamTo = "To"
-
+let baseURLString = ""
+// If your token server is written in PHP, accessTokenEndpoint needs .php extension at the end. For example : /accessToken.php
+let accessTokenEndpoint = "/accessToken"
+let identity = "alice"
+let twimlParamTo = "to"
 /**
  * Please read the Capacitor iOS Plugin Development Guide
  * here: https://capacitor.ionicframework.com/docs/plugins/ios
  */
 @objc(CapacitorTwilioVoiceSDK)
-public class CapacitorTwilioVoiceSDK: CAPPlugin {
+public class CapacitorTwilioVoiceSDK: CAPPlugin  {
     
-  // Callback for the Javascript plugin delegate, used for events
-    private var callback: String?
-    // Push registry for APNS VOIP
-    private var voipPushRegistry: PKPushRegistry?
-    private var incomingPushCompletionCallback: (() -> Void)?
-    // Current call (can be nil)
-    private var call: TVOCall?
-    // Current call invite (can be nil)
-    private var callInvite: TVOCallInvite?
-    // Device Token from Apple Push Notification Service for VOIP
-    private var pushDeviceToken: String?
-    // Access Token from Twilio
-    private var accessToken: String?
-    // Outgoing call params
-    private var outgoingCallParams: [AnyHashable : Any]?
-    // Configure whether or not to use CallKit via the plist
-    // This is a variable from plugin installation (ENABLE_CALLKIT)
-    private var enableCallKit = false
-    // Configure whether or not to mask the incoming phone number for privacy via the plist
-    // This is a variable from plugin installation (MASK_INCOMING_PHONE_NUMBER)
-    private var maskIncomingPhoneNumber = false
-    // Call Kit member variables
-    private var callKitProvider: CXProvider?
-    private var callKitCallController: CXCallController?
-    private var callKitCompletionCallback: ((Bool) -> Void)?
-    // Audio Properties
-    private var ringtonePlayer: AVAudioPlayer?
-    private var audioDevice: TVODefaultAudioDevice?
-}
-
-class TwilioVoicePlugin {
-    func pluginInitialize() {
+    class TwilioVoicePlugin: UIViewController, PKPushRegistryDelegate, TVONotificationDelegate, TVOCallDelegate, CXProviderDelegate, UITextFieldDelegate, AVAudioPlayerDelegate {
+        
+        var deviceTokenString: String? = ""
+        
+        var voipRegistry: PKPushRegistry?
+        var incomingPushCompletionCallback: (()->Swift.Void?)? = nil
+        
+        var isSpinning: Bool?
+        var incomingAlertController: UIAlertController?
+        
+        var callKitCompletionCallback: ((Bool)->Swift.Void?)? = nil
+        var audioDevice: TVODefaultAudioDevice = TVODefaultAudioDevice()
+        var activeCallInvites: [String: TVOCallInvite]! = [:]
+        var activeCalls: [String: TVOCall]! = [:]
+        
+        // activeCall represents the last connected call
+        var activeCall: TVOCall? = nil
+        
+        var callKitProvider: CXProvider?
+        var callKitCallController: CXCallController?
+        var userInitiatedDisconnect: Bool = false
+        
+        /*
+         Custom ringback will be played when this flag is enabled.
+         When [answerOnBridge](https://www.twilio.com/docs/voice/twiml/dial#answeronbridge) is enabled in
+         the <Dial> TwiML verb, the caller will not hear the ringback while the call is ringing and awaiting
+         to be accepted on the callee's side. Configure this flag based on the TwiML application.
+         */
+        var playCustomRingback: Bool = false
+        var ringtonePlayer: AVAudioPlayer? = nil
         
         
-        print("Initializing plugin")
-        let debugTwilioPreference: String? = Bundle.main.object(forInfoDictionaryKey: "TVPEnableDebugging")?.uppercased()
-        if (debugTwilioPreference == "YES") || (debugTwilioPreference == "TRUE") {
-            TwilioVoice.logLevel = TVOLogLevelDebug
-        } else {
-            TwilioVoice.logLevel = TVOLogLevelOff
-        }
         
-        // read in Enable CallKit preference
-        let enableCallKitPreference = Bundle.main.object(forInfoDictionaryKey: "TVPEnableCallKit")?.uppercased()
-        if (enableCallKitPreference == "YES") || (enableCallKitPreference == "TRUE") {
-            enableCallKit = true
-            audioDevice = TVODefaultAudioDevice()
-            TwilioVoice.audioDevice = audioDevice
-        } else {
-            enableCallKit = false
-        }
+        // Push registry for APNS VOIP
+        private var voipPushRegistry: PKPushRegistry?
+        // Current call (can be nil)
+        private var call: TVOCall?
+        // Current call invite (can be nil)
+        private var callInvite: TVOCallInvite?
+        // Device Token from Apple Push Notification Service for VOIP
+        private var pushDeviceToken: String?
+        // Access Token from Twilio
+        private var accessToken: String?
+        // Outgoing call params
+        private var outgoingCallParams: [AnyHashable : Any]?
+        // Configure whether or not to use CallKit via the plist
+        // This is a variable from plugin installation (ENABLE_CALLKIT)
+        private var enableCallKit = false
+        // Configure whether or not to mask the incoming phone number for privacy via the plist
+        // This is a variable from plugin installation (MASK_INCOMING_PHONE_NUMBER)
+        private var maskIncomingPhoneNumber = false
         
-        // read in MASK_INCOMING_PHONE_NUMBER preference
-        let enableMaskIncomingPhoneNumberPreference = Bundle.main.object(forInfoDictionaryKey: "TVPMaskIncomingPhoneNumber")?.uppercased()
-        if (enableMaskIncomingPhoneNumberPreference == "YES") || (enableMaskIncomingPhoneNumberPreference == "TRUE") {
-            maskIncomingPhoneNumber = true
-        } else {
-            maskIncomingPhoneNumber = false
-        }
         
-        if !enableCallKit {
-            //ask for notification support
-            let center = UNUserNotificationCenter.current()
-            let options: UNAuthorizationOptions = .alert + .sound
+        func initializePlugin() {
+            //        print("Initializing plugin")
+            //        let debugTwilioPreference = Bundle.main.object(forInfoDictionaryKey: "TVPEnableDebugging")?.uppercased()
+            //        if (debugTwilioPreference == "YES") || (debugTwilioPreference == "TRUE") {
+            //            TwilioVoice.logLevel = TVOLogLevelDebug
+            //        } else {
+            //            TwilioVoice.logLevel = TVOLogLevelOff
+            //        }
             
-            center.requestAuthorization(options: options, completionHandler: { granted, error in
-                if !granted {
-                    print("Notifications not granted")
-                }
-            })
+            // read in Enable CallKit preference
+            //        let enableCallKitPreference = Bundle.main.object(forInfoDictionaryKey: "TVPEnableCallKit")?.uppercased()
+            let enableCallKitPreference = "YES"
             
-            // initialize ringtone player
-            let ringtoneURL = Bundle.main.url(forResource: "ringing.wav", withExtension: nil)
-            if ringtoneURL != nil {
-                var error: Error? = nil
-                do {
-                    if let ringtoneURL = ringtoneURL {
-                        ringtonePlayer = try AVAudioPlayer(contentsOf: ringtoneURL)
-                    }
-                } catch {
-                }
-                if error != nil {
-                    print("Error initializing ring tone player: \(error?.localizedDescription ?? "")")
-                } else {
-                    //looping ring
-                    ringtonePlayer.numberOfLoops = -1
-                    ringtonePlayer.prepareToPlay()
-                }
-            }
-        }
-        
-    }
-    
-    
-    func initialize(withAccessToken command: CDVInvokedUrlCommand?) {
-        print("Initializing with an access token")
-
-        // retain this command as the callback to use for raising Twilio events
-        callback = command?.callbackId
-
-        accessToken = command?.arguments[0] as? Data
-        if accessToken != nil {
-
-            // initialize VOIP Push Registry
-            voipPushRegistry = PKPushRegistry(queue: DispatchQueue.main)
-            voipPushRegistry.delegate = self
-            voipPushRegistry.desiredPushTypes = Set<AnyHashable>([.voIP])
-
-            if enableCallKit {
-                // initialize CallKit (based on Twilio ObjCVoiceCallKitQuickstart)
-                let incomingCallAppName = Bundle.main.object(forInfoDictionaryKey: "TVPIncomingCallAppName") as? String
-                let configuration = CXProviderConfiguration(localizedName: incomingCallAppName ?? "")
-                configuration.maximumCallGroups = 1
-                configuration.maximumCallsPerCallGroup = 1
-                let callkitIcon = UIImage(named: "logo.png")
-                configuration.iconTemplateImageData =
-                configuration.ringtoneSound = "traditionalring.mp3"
-
-                callKitProvider = CXProvider(configuration: configuration)
-                callKitProvider.setDelegate(self, queue: nil)
-
-                callKitCallController = CXCallController()
-            }
-
-            javascriptCallback("onclientinitialized")
-        }
-
-    }
-
-    
-    
-    func call(_ command: CDVInvokedUrlCommand?) {
-        if command?.arguments.count() ?? 0 > 0 {
-            accessToken = command?.arguments[0] as? Data
-            if command?.arguments.count() ?? 0 > 1 {
-                outgoingCallParams = command?.arguments[1]
-            }
-
-            if call && call.state == TVOCallStateConnected {
-                performEndCallAction(withUUID: call.uuid)
+            if (enableCallKitPreference == "YES") || (enableCallKitPreference == "TRUE") {
+                enableCallKit = true
+                audioDevice = TVODefaultAudioDevice()
+                TwilioVoice.audioDevice = audioDevice
             } else {
+                enableCallKit = false
+            }
+            
+            // read in MASK_INCOMING_PHONE_NUMBER preference
+            //        let enableMaskIncomingPhoneNumberPreference = Bundle.main.object(forInfoDictionaryKey: "TVPMaskIncomingPhoneNumber")?.uppercased()
+            let enableMaskIncomingPhoneNumberPreference = "YES"
+            
+            if (enableMaskIncomingPhoneNumberPreference == "YES") || (enableMaskIncomingPhoneNumberPreference == "TRUE") {
+                maskIncomingPhoneNumber = true
+            } else {
+                maskIncomingPhoneNumber = false
+            }
+            
+            if !enableCallKit {
+                //ask for notification support
+                let center = UNUserNotificationCenter.current()
+                let options: UNAuthorizationOptions = [.alert, .sound]
+                
+                center.requestAuthorization(options: options, completionHandler: { granted, error in
+                    if !granted {
+                        print("Notifications not granted")
+                    }
+                })
+                
+                // initialize ringtone player
+                let ringtoneURL = Bundle.main.url(forResource: "ringing.wav", withExtension: nil)
+                if ringtoneURL != nil {
+                    let error: Error? = nil
+                    do {
+                        if let ringtoneURL = ringtoneURL {
+                            ringtonePlayer = try AVAudioPlayer(contentsOf: ringtoneURL)
+                        }
+                    } catch {
+                    }
+                    if error != nil {
+                        print("Error initializing ring tone player: \(error?.localizedDescription ?? "")")
+                    } else {
+                        //looping ring
+                        ringtonePlayer?.numberOfLoops = -1
+                        ringtonePlayer?.prepareToPlay()
+                    }
+                }
+            }
+        }
+        
+        func initialize(accessToken: String?) {
+            print("Initializing with an access token")
+            
+            // retain this command as the callback to use for raising Twilio events
+            //        self.callback = command?.callbackId
+            
+            self.accessToken = accessToken
+            if self.accessToken != nil {
+                
+                // initialize VOIP Push Registry
+                self.voipPushRegistry = PKPushRegistry.init(queue: DispatchQueue.main)
+                self.voipPushRegistry?.delegate = self
+                self.voipPushRegistry?.desiredPushTypes = Set<PKPushType>([.voIP])
+                
                 if enableCallKit {
-                    let uuid = UUID()
+                    // initialize CallKit (based on Twilio ObjCVoiceCallKitQuickstart)
                     let incomingCallAppName = Bundle.main.object(forInfoDictionaryKey: "TVPIncomingCallAppName") as? String
-                    performStartCallAction(with: uuid, handle: incomingCallAppName)
-                } else {
-                    print("Making call to with params \(outgoingCallParams)")
-                    let connectOptions = TVOConnectOptions(accessToken: accessToken, block: { builder in
-                            builder?.params = [
-                            kTwimlParamTo: self.outgoingCallParams["To"]
-                            ]
+                    let configuration = CXProviderConfiguration(localizedName: incomingCallAppName ?? "")
+                    configuration.maximumCallGroups = 1
+                    configuration.maximumCallsPerCallGroup = 1
+                    if let callkitIcon = UIImage(named: "logo.png") {
+                        configuration.iconTemplateImageData = UIImagePNGRepresentation(callkitIcon)
+                    }
+                    configuration.ringtoneSound = "traditionalring.mp3"
+                    
+                    self.callKitProvider = CXProvider(configuration: configuration)
+                    self.callKitProvider?.setDelegate(self, queue: nil)
+                    
+                    callKitCallController = CXCallController()
+                }
+                
+                //            javascriptCallback("onclientinitialized")
+            }
+            
+        }
+        
+        
+        func call(token: String) {
+            
+            if let call = self.activeCall {
+                self.userInitiatedDisconnect = true
+                performEndCallAction(uuid: call.uuid)
+                self.toggleUIState(isEnabled: false, showCallControl: false)
+            } else {
+                let uuid = UUID()
+                let handle = "Voice Bot"
+                
+                self.checkRecordPermission { (permissionGranted) in
+                    if (!permissionGranted) {
+                        let alertController: UIAlertController = UIAlertController(title: "Voice Quick Start",
+                                                                                   message: "Microphone permission not granted",
+                                                                                   preferredStyle: .alert)
+                        
+                        let continueWithMic: UIAlertAction = UIAlertAction(title: "Continue without microphone",
+                                                                           style: .default,
+                                                                           handler: { (action) in
+                                                                            self.performStartCallAction(uuid: uuid, handle: handle)
                         })
-                    call = TwilioVoice.connect(with: connectOptions, delegate: self)
-                    outgoingCallParams = nil
-                }
-            }
-        }
-    }
-
-    func sendDigits(_ command: CDVInvokedUrlCommand?) {
-        if command?.arguments.count() ?? 0 > 0 {
-            call.sendDigits(command?.arguments[0] as? CDVInvokedUrlCommand)
-        }
-    }
-
-    
-    
-    
-    func disconnect(_ command: CDVInvokedUrlCommand?) {
-        if callInvite && call && call.state == TVOCallStateRinging {
-            callInvite.reject()
-            callInvite = nil
-        } else if call {
-            call.disconnect()
-        }
-    }
-
-    func acceptCallInvite(_ command: CDVInvokedUrlCommand?) {
-        if callInvite {
-            callInvite.accept(withDelegate: self)
-        }
-        if ringtonePlayer.isPlaying() {
-            //pause ringtone
-            ringtonePlayer.pause()
-        }
-    }
-
-    func rejectCallInvite(_ command: CDVInvokedUrlCommand?) {
-        if callInvite {
-            callInvite.reject()
-        }
-        if ringtonePlayer.isPlaying() {
-            //pause ringtone
-            ringtonePlayer.pause()
-        }
-    }
-
-    
-    // MARK: - AVAudioSession
-    func toggleAudioRoute(_ toSpeaker: Bool) {
-        // The mode set by the Voice SDK is "VoiceChat" so the default audio route is the built-in receiver. Use port override to switch the route.
-        let audioDevice = self.audioDevice ?? TwilioVoice.audioDevice as? TVODefaultAudioDevice
-        audioDevice?.block = {
-            // We will execute `kDefaultAVAudioSessionConfigurationBlock` first.
-            kTVODefaultAVAudioSessionConfigurationBlock()
-
-            // Overwrite the audio route
-            let session = AVAudioSession.sharedInstance()
-            var error: Error? = nil
-            if toSpeaker {
-                do {
-                    try session.overrideOutputAudioPort(AVAudioSessionPortOverrideSpeaker)
-
-                    if try session.overrideOutputAudioPort(AVAudioSessionPortOverrideSpeaker) == nil {
-                        print("Unable to reroute audio: \(error?.localizedDescription ?? "")")
+                        alertController.addAction(continueWithMic)
+                        
+                        let goToSettings: UIAlertAction = UIAlertAction(title: "Settings",
+                                                                        style: .default,
+                                                                        handler: { (action) in
+                                                                            UIApplication.shared.open(URL(string: UIApplicationOpenSettingsURLString)!,
+                                                                                                      options: [UIApplicationOpenURLOptionUniversalLinksOnly: false],
+                                                                                                      completionHandler: nil)
+                        })
+                        alertController.addAction(goToSettings)
+                        
+                        let cancel: UIAlertAction = UIAlertAction(title: "Cancel",
+                                                                  style: .cancel,
+                                                                  handler: { (action) in
+                                                                    self.toggleUIState(isEnabled: true, showCallControl: false)
+                                                                    //                            self.stopSpin()
+                        })
+                        alertController.addAction(cancel)
+                        
+                        self.present(alertController, animated: true, completion: nil)
+                    } else {
+                        self.performStartCallAction(uuid: uuid, handle: handle)
                     }
-                } catch {
-                    print("Unable to reroute audio: \(error?.localizedDescription ?? "")")
                 }
+            }
+            
+        }
+        
+        func sendDigits() {
+            
+        }
+        
+        
+        
+        
+        
+        
+        
+        
+        //    required init?(coder aDecoder: NSCoder) {
+        //          isSpinning = false
+        //          voipRegistry = PKPushRegistry.init(queue: DispatchQueue.main)
+        
+        //          let configuration = CXProviderConfiguration(localizedName: "Quickstart")
+        //          configuration.maximumCallGroups = 1
+        //          configuration.maximumCallsPerCallGroup = 1
+        //          if let callKitIcon = UIImage(named: "iconMask80") {
+        //              configuration.iconTemplateImageData = UIImagePNGRepresentation(callKitIcon)
+        //          }
+        
+        //          callKitProvider = CXProvider(configuration: configuration)
+        //          callKitCallController = CXCallController()
+        
+        //          super.init(coder: aDecoder)
+        
+        //          callKitProvider.setDelegate(self, queue: nil)
+        
+        //          voipRegistry.delegate = self
+        //          voipRegistry.desiredPushTypes = Set([PKPushType.voIP])
+        //      }
+        
+        
+        
+        deinit {
+            // CallKit has an odd API contract where the developer must call invalidate or the CXProvider is leaked.
+            if let callKitProvider = self.callKitProvider {
+                callKitProvider.invalidate()
+            }
+        }
+        
+        //      override func viewDidLoad() {
+        //          super.viewDidLoad()
+        //
+        //          toggleUIState(isEnabled: true, showCallControl: false)
+        //
+        //          /*
+        //           * The important thing to remember when providing a TVOAudioDevice is that the device must be set
+        //           * before performing any other actions with the SDK (such as connecting a Call, or accepting an incoming Call).
+        //           * In this case we've already initialized our own `TVODefaultAudioDevice` instance which we will now set.
+        //           */
+        //          TwilioVoice.audioDevice = audioDevice
+        //      }
+        
+        //
+        //      override func didReceiveMemoryWarning() {
+        //          super.didReceiveMemoryWarning()
+        //      }
+        
+        func fetchAccessToken() -> String? {
+            let endpointWithIdentity = String(format: "%@?identity=%@", accessTokenEndpoint, identity)
+            guard let accessTokenURL = URL(string: baseURLString + endpointWithIdentity) else {
+                return nil
+            }
+            
+            return try? String.init(contentsOf: accessTokenURL, encoding: .utf8)
+        }
+        
+        func toggleUIState(isEnabled: Bool, showCallControl: Bool) {
+            print("toggle")
+            //          placeCallButton.isEnabled = isEnabled
+            //          if (showCallControl) {
+            //              callControlView.isHidden = false
+            //              muteSwitch.isOn = false
+            //              speakerSwitch.isOn = true
+            //          } else {
+            //              callControlView.isHidden = true
+            //          }
+        }
+        
+        @IBAction func mainButtonPressed(_ sender: Any) {
+            if let call = self.activeCall {
+                self.userInitiatedDisconnect = true
+                performEndCallAction(uuid: call.uuid)
+                self.toggleUIState(isEnabled: false, showCallControl: false)
             } else {
-                do {
-                    try session.overrideOutputAudioPort(AVAudioSessionPortOverrideNone)
-
-                    if try session.overrideOutputAudioPort(AVAudioSessionPortOverrideNone) == nil {
-                        print("Unable to reroute audio: \(error?.localizedDescription ?? "")")
+                let uuid = UUID()
+                let handle = "Voice Bot"
+                
+                self.checkRecordPermission { (permissionGranted) in
+                    if (!permissionGranted) {
+                        let alertController: UIAlertController = UIAlertController(title: "Voice Quick Start",
+                                                                                   message: "Microphone permission not granted",
+                                                                                   preferredStyle: .alert)
+                        
+                        let continueWithMic: UIAlertAction = UIAlertAction(title: "Continue without microphone",
+                                                                           style: .default,
+                                                                           handler: { (action) in
+                                                                            self.performStartCallAction(uuid: uuid, handle: handle)
+                        })
+                        alertController.addAction(continueWithMic)
+                        
+                        let goToSettings: UIAlertAction = UIAlertAction(title: "Settings",
+                                                                        style: .default,
+                                                                        handler: { (action) in
+                                                                            UIApplication.shared.open(URL(string: UIApplicationOpenSettingsURLString)!,
+                                                                                                      options: [UIApplicationOpenURLOptionUniversalLinksOnly: false],
+                                                                                                      completionHandler: nil)
+                        })
+                        alertController.addAction(goToSettings)
+                        
+                        let cancel: UIAlertAction = UIAlertAction(title: "Cancel",
+                                                                  style: .cancel,
+                                                                  handler: { (action) in
+                                                                    self.toggleUIState(isEnabled: true, showCallControl: false)
+                        })
+                        alertController.addAction(cancel)
+                        
+                        self.present(alertController, animated: true, completion: nil)
+                    } else {
+                        self.performStartCallAction(uuid: uuid, handle: handle)
                     }
-                } catch {
-                    print("Unable to reroute audio: \(error?.localizedDescription ?? "")")
                 }
             }
         }
-        audioDevice?.block()
-    }
-
-    func setSpeaker(_ command: CDVInvokedUrlCommand?) {
-        let mode = command?.arguments[0] as? String
-        if mode?.isEqual("on") ?? false {
-            toggleAudioRoute(true)
-        } else {
-            toggleAudioRoute(false)
+        
+        func checkRecordPermission(completion: @escaping (_ permissionGranted: Bool) -> Void) {
+            let permissionStatus: AVAudioSessionRecordPermission = AVAudioSession.sharedInstance().recordPermission()
+            
+            switch permissionStatus {
+            case AVAudioSessionRecordPermission.granted:
+                // Record permission already granted.
+                completion(true)
+                break
+            case AVAudioSessionRecordPermission.denied:
+                // Record permission denied.
+                completion(false)
+                break
+            case AVAudioSessionRecordPermission.undetermined:
+                // Requesting record permission.
+                // Optional: pop up app dialog to let the users know if they want to request.
+                AVAudioSession.sharedInstance().requestRecordPermission({ (granted) in
+                    completion(granted)
+                })
+                break
+            default:
+                completion(false)
+                break
+            }
         }
-    }
-
-    
-    func muteCall(_ command: CDVInvokedUrlCommand?) {
-        if call {
-            call.muted = true
+        
+        @IBAction func muteSwitchToggled(_ sender: UISwitch) {
+            // The sample app supports toggling mute from app UI only on the last connected call.
+            if let call = self.activeCall {
+                call.isMuted = sender.isOn
+            }
         }
-    }
-
-    func unmuteCall(_ command: CDVInvokedUrlCommand?) {
-        if call {
-            call.muted = false
+        
+        @IBAction func speakerSwitchToggled(_ sender: UISwitch) {
+            toggleAudioRoute(toSpeaker: sender.isOn)
         }
-    }
-
-    func isCallMuted(_ command: CDVInvokedUrlCommand?) {
-        if call {
-            let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAsBool: call.muted)
-            commandDelegate.send(result, callbackId: command?.callbackId)
-        } else {
-            let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAsBool: false)
-            commandDelegate.send(result, callbackId: command?.callbackId)
+        
+        // MARK: UITextFieldDelegate
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            return true
         }
-    }
-
-    
-    // MARK: PKPushRegistryDelegate methods
-    func pushRegistry(_ registry: PKPushRegistry, didUpdate credentials: PKPushCredentials, for type: PKPushType) {
-        if type.isEqual(toString: PKPushType.voIP) {
-            pushDeviceToken = credentials.token.description
-            print("Updating push device token for VOIP: \(pushDeviceToken)")
-            TwilioVoice.register(withAccessToken: accessToken, deviceToken: pushDeviceToken) { error in
-                if error != nil {
-                    print("Error registering Voice Client for VOIP Push: \(error?.localizedDescription ?? "")")
-                } else {
-                    print("Registered Voice Client for VOIP Push")
+        
+        
+        // MARK: PKPushRegistryDelegate
+        func pushRegistry(_ registry: PKPushRegistry, didUpdate credentials: PKPushCredentials, for type: PKPushType) {
+            NSLog("pushRegistry:didUpdatePushCredentials:forType:")
+            
+            if (type != .voIP) {
+                return
+            }
+            
+            guard let accessToken = fetchAccessToken() else {
+                return
+            }
+            
+            let deviceToken = credentials.token.map { String(format: "%02x", $0) }.joined()
+            
+            TwilioVoice.register(withAccessToken: accessToken, deviceToken: deviceToken) { (error) in
+                if let error = error {
+                    NSLog("An error occurred while registering: \(error.localizedDescription)")
+                }
+                else {
+                    NSLog("Successfully registered for VoIP push notifications.")
                 }
             }
+            
+            self.deviceTokenString = deviceToken
         }
-    }
-
-    func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
-        if type.isEqual(toString: PKPushType.voIP) {
-            print("Invalidating push device token for VOIP: \(pushDeviceToken)")
-            TwilioVoice.unregister(withAccessToken: accessToken, deviceToken: pushDeviceToken) { error in
-                if error != nil {
-                    print("Error unregistering Voice Client for VOIP Push: \(error?.localizedDescription ?? "")")
-                } else {
-                    print("Unegistered Voice Client for VOIP Push")
+        
+        func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
+            NSLog("pushRegistry:didInvalidatePushTokenForType:")
+            
+            if (type != .voIP) {
+                return
+            }
+            
+            guard let deviceToken = deviceTokenString, let accessToken = fetchAccessToken() else {
+                return
+            }
+            
+            TwilioVoice.unregister(withAccessToken: accessToken, deviceToken: deviceToken) { (error) in
+                if let error = error {
+                    NSLog("An error occurred while unregistering: \(error.localizedDescription)")
                 }
-                self.pushDeviceToken = nil
+                else {
+                    NSLog("Successfully unregistered from VoIP push notifications.")
+                }
+            }
+            
+            self.deviceTokenString = nil
+        }
+        
+        /**
+         * Try using the `pushRegistry:didReceiveIncomingPushWithPayload:forType:withCompletionHandler:` method if
+         * your application is targeting iOS 11. According to the docs, this delegate method is deprecated by Apple.
+         */
+        func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType) {
+            NSLog("pushRegistry:didReceiveIncomingPushWithPayload:forType:")
+            
+            if (type == PKPushType.voIP) {
+                // The Voice SDK will use main queue to invoke `cancelledCallInviteReceived:error:` when delegate queue is not passed
+                TwilioVoice.handleNotification(payload.dictionaryPayload, delegate: self, delegateQueue: nil)
             }
         }
-    }
-
-    
-    func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType) {
-        if type.isEqual(toString: PKPushType.voIP) {
-            print("Received Incoming Push Payload for VOIP: \(payload.dictionaryPayload)")
-            TwilioVoice.handleNotification(payload.dictionaryPayload, delegate: self)
-        }
-    }
-
-    func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
-        print("pushRegistry:didReceiveIncomingPushWithPayload:forType:withCompletionHandler:")
-
-        // Save for later when the notification is properly handled.
-        incomingPushCompletionCallback = completion
-
-        if type.isEqual(toString: PKPushType.voIP) {
-            if !TwilioVoice.handleNotification(payload.dictionaryPayload, delegate: self) {
-                print("This is not a valid Twilio Voice notification.")
+        
+        /**
+         * This delegate method is available on iOS 11 and above. Call the completion handler once the
+         * notification payload is passed to the `TwilioVoice.handleNotification()` method.
+         */
+        func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
+            NSLog("pushRegistry:didReceiveIncomingPushWithPayload:forType:completion:")
+            
+            if (type == PKPushType.voIP) {
+                // The Voice SDK will use main queue to invoke `cancelledCallInviteReceived:error:` when delegate queue is not passed
+                TwilioVoice.handleNotification(payload.dictionaryPayload, delegate: self, delegateQueue: nil)
             }
-        }
-    }
-
-    func incomingPushHandled() {
-        if incomingPushCompletionCallback {
-            incomingPushCompletionCallback()
-            incomingPushCompletionCallback = nil
-        }
-    }
-
-    // MARK: TVONotificationDelegate
-    func callInviteReceived(_ callInvite: TVOCallInvite?) {
-        handleCallInviteReceived(callInvite)
-    }
-
-    
-    
-    func cancelledCallInviteReceived(_ cancelledCallInvite: TVOCancelledCallInvite) {
-        print("cancelledCallInviteReceived:")
-
-        incomingPushHandled()
-
-        if !callInvite || !(callInvite.callSid == cancelledCallInvite.callSid) {
-            print("No matching pending CallInvite. Ignoring the Cancelled CallInvite")
-            return
-        }
-        if enableCallKit {
-            performEndCallAction(withUUID: callInvite.uuid)
-        } else {
-            cancelNotification()
-            //pause ringtone
-            ringtonePlayer.pause()
-        }
-
-        callInvite = nil
-        incomingPushHandled()
-        javascriptCallback("oncallinvitecanceled")
-    }
-
-    
-    
-    func handleCallInviteReceived(_ callInvite: TVOCallInvite?) {
-        if let uuid = callInvite?.uuid {
-            print("Call Invite Received: \(uuid)")
-        }
-        // Two simlutaneous callInvites or calls are not supported by Twilio and cause an error
-        // if the user attempts to answer the second call invite through CallKit.
-        // Rather than surface the second invite, just reject it which will most likely
-        // result in the second invite going to voicemail
-        if self.callInvite == nil && call == nil {
-            self.callInvite = callInvite
-            var callInviteProperties: [StringLiteralConvertible : UnknownType?]? = nil
-            if let from = callInvite?.from, let to = callInvite?.to, let callSid = callInvite?.callSid {
-                callInviteProperties = [
-                "from": from,
-                "to": to,
-                "callSid": callSid
-            ]
-            }
-            if enableCallKit {
-                reportIncomingCall(from: (maskIncomingPhoneNumber ? "Unknown" : callInvite?.from), withUUID: callInvite?.uuid)
+            
+            if let version = Float(UIDevice.current.systemVersion), version < 13.0 {
+                // Save for later when the notification is properly handled.
+                self.incomingPushCompletionCallback = completion
             } else {
-                showNotification((maskIncomingPhoneNumber ? "Unknown" : callInvite?.from))
-                //play ringtone
-                ringtonePlayer.play()
-            }
-
-            javascriptCallback("oncallinvitereceived", withArguments: callInviteProperties)
-        } else {
-            incomingPushHandled()
-            if let uuid = callInvite?.uuid {
-                print("Call Invite Received During Call. Ignoring: \(uuid)")
+                /**
+                 * The Voice SDK processes the call notification and returns the call invite synchronously. Report the incoming call to
+                 * CallKit and fulfill the completion before exiting this callback method.
+                 */
+                completion()
             }
         }
-    }
-
-    
-    
-    func notificationError(_ error: Error?) {
-        print("Twilio Voice Notification Error: \(error?.localizedDescription ?? "")")
-        javascriptErrorback(error)
-    }
-
-    // MARK: TVOCallDelegate
-    func callDidConnect(_ call: TVOCall?) {
-        if let description = call?.description() {
-            print("Call Did Connect: \(description)")
-        }
-        self.call = call
-
-        if !enableCallKit {
-            cancelNotification()
-            if ringtonePlayer.isPlaying() {
-                //pause ringtone
-                ringtonePlayer.pause()
-            }
-        } else {
-            callKitCompletionCallback(true)
-            callKitCompletionCallback = nil
-        }
-
-        var callProperties: [AnyHashable : Any] = [:]
-        if call?.from != nil {
-            if let from = call?.from {
-                callProperties["from"] = from
+        
+        func incomingPushHandled() {
+            if let completion = self.incomingPushCompletionCallback {
+                completion()
+                self.incomingPushCompletionCallback = nil
             }
         }
-        if call?.to != nil {
-            if let to = call?.to {
-                callProperties["to"] = to
+        
+        // MARK: TVONotificaitonDelegate
+        func callInviteReceived(_ callInvite: TVOCallInvite) {
+            NSLog("callInviteReceived:")
+            
+            var from:String = callInvite.from ?? "Voice Bot"
+            from = from.replacingOccurrences(of: "client:", with: "")
+            
+            // Always report to CallKit
+            reportIncomingCall(from: from, uuid: callInvite.uuid)
+            self.activeCallInvites[callInvite.uuid.uuidString] = callInvite
+        }
+        
+        func cancelledCallInviteReceived(_ cancelledCallInvite: TVOCancelledCallInvite, error: Error) {
+            NSLog("cancelledCallInviteCanceled:error:, error: \(error.localizedDescription)")
+            
+            if (self.activeCallInvites!.isEmpty) {
+                NSLog("No pending call invite")
+                return
+            }
+            
+            var callInvite: TVOCallInvite?
+            for (_, invite) in self.activeCallInvites {
+                if (invite.callSid == cancelledCallInvite.callSid) {
+                    callInvite = invite
+                    break
+                }
+            }
+            
+            if let callInvite = callInvite {
+                performEndCallAction(uuid: callInvite.uuid)
             }
         }
-        if call?.sid != nil {
-            if let sid = call?.sid {
-                callProperties["callSid"] = sid
+        
+        // MARK: TVOCallDelegate
+        func callDidStartRinging(_ call: TVOCall) {
+            NSLog("callDidStartRinging:")
+            
+            //          self.placeCallButton.setTitle("Ringing", for: .normal)
+            
+            /*
+             When [answerOnBridge](https://www.twilio.com/docs/voice/twiml/dial#answeronbridge) is enabled in the
+             <Dial> TwiML verb, the caller will not hear the ringback while the call is ringing and awaiting to be
+             accepted on the callee's side. The application can use the `AVAudioPlayer` to play custom audio files
+             between the `[TVOCallDelegate callDidStartRinging:]` and the `[TVOCallDelegate callDidConnect:]` callbacks.
+             */
+            if (self.playCustomRingback) {
+                self.playRingback()
             }
         }
-        callProperties["isMuted"] = NSNumber(value: call?.isMuted ?? false)
-        let callState = string(fromCallState: call?.state)
-        if callState != "" {
-            callProperties["state"] = callState
+        
+        func callDidConnect(_ call: TVOCall) {
+            NSLog("callDidConnect:")
+            
+            if (self.playCustomRingback) {
+                self.stopRingback()
+            }
+            
+            self.callKitCompletionCallback!(true)
+            
+            //          self.placeCallButton.setTitle("Hang Up", for: .normal)
+            
+            toggleUIState(isEnabled: true, showCallControl: true)
+            //          stopSpin()
+            toggleAudioRoute(toSpeaker: true)
         }
-        javascriptCallback("oncalldidconnect", withArguments: callProperties)
-    }
-
-    
-    func call(_ call: TVOCall?, didFailToConnectWithError error: Error?) {
-        if let description = call?.description() {
-            print("Call Did Fail with Error: \(description), \(error?.localizedDescription ?? "")")
+        
+        func call(_ call: TVOCall, isReconnectingWithError error: Error) {
+            NSLog("call:isReconnectingWithError:")
+            
+            //          self.placeCallButton.setTitle("Reconnecting", for: .normal)
+            
+            toggleUIState(isEnabled: false, showCallControl: false)
         }
-        if enableCallKit {
-            callKitCompletionCallback(false)
+        
+        func callDidReconnect(_ call: TVOCall) {
+            NSLog("callDidReconnect:")
+            
+            //          self.placeCallButton.setTitle("Hang Up", for: .normal)
+            
+            toggleUIState(isEnabled: true, showCallControl: true)
         }
-        callDisconnected(call)
-        javascriptErrorback(error)
-    }
-
-    func call(_ call: TVOCall?, didDisconnectWithError error: Error?) {
-        if error != nil {
+        
+        func call(_ call: TVOCall, didFailToConnectWithError error: Error) {
+            NSLog("Call failed to connect: \(error.localizedDescription)")
+            
+            if let completion = self.callKitCompletionCallback {
+                completion(false)
+            }
+            
+            performEndCallAction(uuid: call.uuid)
+            callDisconnected(call)
+        }
+        
+        func call(_ call: TVOCall, didDisconnectWithError error: Error?) {
             if let error = error {
-                print("Call failed: \(error)")
-            }
-            javascriptErrorback(error)
-        } else {
-            print("Call disconnected")
-        }
-
-        callDisconnected(call)
-    }
-
-    func callDisconnected(_ call: TVOCall?) {
-        if let description = call?.description() {
-            print("Call Did Disconnect: \(description)")
-        }
-
-        // Call Kit Integration
-        if enableCallKit {
-            performEndCallAction(withUUID: call?.uuid)
-        }
-
-        self.call = nil
-        callKitCompletionCallback = nil
-    }
-
-    // MARK: Conversion methods for the plugin
-    func string(from state: TVOCallState) -> String? {
-        if state == TVOCallStateRinging {
-            return "ringing"
-        } else if state == TVOCallStateConnected {
-            return "connected"
-        } else if state == TVOCallStateConnecting {
-            return "connecting"
-        } else if state == TVOCallStateDisconnected {
-            return "disconnected"
-        }
-
-        return nil
-    }
-    
-    
-    // MARK: Cordova Integration methods for the plugin Delegate - from TCPlugin.m/Stevie Graham
-    func javascriptCallback(_ event: String?, withArguments arguments: [AnyHashable : Any]?) {
-        var options: [AnyHashable : Any]? = nil
-        if let arguments = arguments {
-            options = [
-            "callback" : event ?? "",
-            "arguments" : arguments
-        ]
-        }
-        let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAsDictionary: options)
-        result.keepCallbackAsBool = true
-
-        commandDelegate.send(result, callbackId: callback)
-    }
-
-    func javascriptCallback(_ event: String?) {
-        javascriptCallback(event, withArguments: nil)
-    }
-
-    func javascriptErrorback(_ error: Error?) {
-        let object = [
-            "message" : error?.localizedDescription
-        ]
-        let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAsDictionary: object)
-        result.keepCallbackAsBool = true
-
-        commandDelegate.send(result, callbackId: callback)
-    }
-
-    
-    // MARK: - Local Notification methods used if CallKit isn't enabled
-    func showNotification(_ alertBody: String?) {
-        let center = UNUserNotificationCenter.current()
-
-        center.removeAllPendingNotificationRequests()
-
-
-        let content = UNMutableNotificationContent()
-        content.sound = UNNotificationSound(named: UNNotificationSoundName("ringing.wav"))
-        content.title = "Answer"
-        content.body = alertBody ?? ""
-
-
-        let request = UNNotificationRequest(identifier: "IncomingCall", content: content, trigger: nil)
-
-        center.add(request, withCompletionHandler: { error in
-            if error != nil {
-                print("Error adding local notification for incoming call: \(error?.localizedDescription ?? "")")
-            }
-        })
-
-    }
-
-    func cancelNotification() {
-        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
-    }
-
-    
-    
-    // MARK: - CXProviderDelegate - based on Twilio Voice with CallKit Quickstart ObjC
-    func provider(_ provider: CXProvider, perform action: CXPlayDTMFCallAction) {
-        if call {
-            print("Sending Digits: \(action.digits)")
-            call.sendDigits(action.digits)
-        } else {
-            print("No current call")
-        }
-
-    }
-
-    
-    // All CallKit Integration Code comes from https://github.com/twilio/voice-callkit-quickstart-objc/blob/master/ObjCVoiceCallKitQuickstart/ViewController.m
-
-    func providerDidReset(_ provider: CXProvider) {
-        print("providerDidReset:")
-        audioDevice.enabled = true
-    }
-
-    func providerDidBegin(_ provider: CXProvider) {
-        print("providerDidBegin:")
-    }
-
-    func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
-        print("provider:didActivateAudioSession:")
-        audioDevice.enabled = true
-    }
-
-    func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
-        print("provider:didDeactivateAudioSession:")
-    }
-
-    func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
-        print("provider:timedOutPerformingAction:")
-    }
-
-    func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
-        print("provider:performStartCallAction:")
-
-        audioDevice.enabled = false
-        audioDevice.block()
-
-        callKitProvider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
-
-        weak var weakSelf = self
-        performVoiceCall(with: action.callUUID, client: nil) { success in
-            let strongSelf = weakSelf
-            if success {
-                strongSelf?.callKitProvider.reportOutgoingCall(with: action.callUUID, connectedAt: Date())
-                action.fulfill()
+                NSLog("Call failed: \(error.localizedDescription)")
             } else {
-                action.fail()
+                NSLog("Call disconnected")
             }
-        }
-    }
-
-    
-    
-    func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
-        print("provider:performAnswerCallAction:")
-
-        assert(callInvite.uuid == action.callUUID, "We only support one Invite at a time.")
-
-        audioDevice.enabled = false
-        audioDevice.block()
-
-        performAnswerVoiceCall(with: action.callUUID) { success in
-            if success {
-                action.fulfill()
-            } else {
-                action.fail()
-            }
-        }
-
-        action.fulfill()
-    }
-
-    func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
-        print("provider:performEndCallAction:")
-
-        if callInvite {
-            callInvite.reject()
-            callInvite = nil
-            javascriptCallback("oncallinvitecanceled")
-        } else if call {
-            call.disconnect()
-        }
-
-        audioDevice.enabled = true
-        action.fulfill()
-    }
-
-    
-    
-    func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
-        if call && call.state == TVOCallStateConnected {
-            call.isOnHold = action.isOnHold
-            action.fulfill()
-        } else {
-            action.fail()
-        }
-    }
-
-    // MARK: - CallKit Actions
-    func performStartCallAction(with uuid: UUID?, handle: String?) {
-        if uuid == nil || handle == nil {
-            return
-        }
-
-        let callHandle = CXHandle(type: .generic, value: handle ?? "")
-        var startCallAction: CXStartCallAction? = nil
-        if let uuid = uuid {
-            startCallAction = CXStartCallAction(call: uuid, handle: callHandle)
-        }
-        var transaction: CXTransaction? = nil
-        if let startCallAction = startCallAction {
-            transaction = CXTransaction(action: startCallAction)
-        }
-
-        if let transaction = transaction {
-            callKitCallController.request(transaction) { error in
+            
+            if !self.userInitiatedDisconnect {
+                var reason = CXCallEndedReason.remoteEnded
+                
                 if error != nil {
-                    print("StartCallAction transaction request failed: \(error?.localizedDescription ?? "")")
-                } else {
-                    print("StartCallAction transaction request successful")
-
-                    let callUpdate = CXCallUpdate()
-                    callUpdate.remoteHandle = callHandle
-                    callUpdate.supportsDTMF = true
-                    callUpdate.supportsHolding = true
-                    callUpdate.supportsGrouping = false
-                    callUpdate.supportsUngrouping = false
-                    callUpdate.hasVideo = false
-
-                    if let uuid = uuid {
-                        self.callKitProvider.reportCall(with: uuid, updated: callUpdate)
+                    reason = .failed
+                }
+                
+                let callHandle = CXHandle(type: .generic, value: handle)
+                let callUpdate = CXCallUpdate()
+                callUpdate.remoteHandle = callHandle
+                callUpdate.supportsDTMF = true
+                callUpdate.supportsHolding = true
+                callUpdate.supportsGrouping = false
+                callUpdate.supportsUngrouping = false
+                callUpdate.hasVideo = false
+                
+                self.callKitProvider?.reportCall(with: call.uuid, updated: callUpdate)
+                
+            }
+            
+            callDisconnected(call)
+        }
+        
+        func callDisconnected(_ call: TVOCall) {
+            if (call == self.activeCall) {
+                self.activeCall = nil
+            }
+            self.activeCalls.removeValue(forKey: call.uuid.uuidString)
+            
+            self.userInitiatedDisconnect = false
+            
+            if (self.playCustomRingback) {
+                self.stopRingback()
+            }
+            
+            toggleUIState(isEnabled: true, showCallControl: false)
+            //          self.placeCallButton.setTitle("Call", for: .normal)
+        }
+        
+        
+        // MARK: AVAudioSession
+        func toggleAudioRoute(toSpeaker: Bool) {
+            // The mode set by the Voice SDK is "VoiceChat" so the default audio route is the built-in receiver. Use port override to switch the route.
+            audioDevice.block = {
+                kTVODefaultAVAudioSessionConfigurationBlock()
+                do {
+                    if (toSpeaker) {
+                        try AVAudioSession.sharedInstance().overrideOutputAudioPort(.speaker)
+                    } else {
+                        try AVAudioSession.sharedInstance().overrideOutputAudioPort(.none)
                     }
+                } catch {
+                    NSLog(error.localizedDescription)
                 }
             }
+            audioDevice.block()
         }
-    }
-
-    
-    func reportIncomingCall(from: String?, with uuid: UUID?) {
-        let callHandle = CXHandle(type: .generic, value: from ?? "")
-
-        let callUpdate = CXCallUpdate()
-        callUpdate.remoteHandle = callHandle
-        callUpdate.supportsDTMF = true
-        callUpdate.supportsHolding = true
-        callUpdate.supportsGrouping = false
-        callUpdate.supportsUngrouping = false
-        callUpdate.hasVideo = false
-
-        if let uuid = uuid {
-            callKitProvider.reportNewIncomingCall(with: uuid, update: callUpdate) { error in
-                if error == nil {
-                    print("Incoming call successfully reported.")
+        
+        
+        
+        
+        // MARK: CXProviderDelegate
+        func providerDidReset(_ provider: CXProvider) {
+            NSLog("providerDidReset:")
+            audioDevice.isEnabled = true
+        }
+        
+        func providerDidBegin(_ provider: CXProvider) {
+            NSLog("providerDidBegin")
+        }
+        
+        func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+            NSLog("provider:didActivateAudioSession:")
+            audioDevice.isEnabled = true
+        }
+        
+        func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+            NSLog("provider:didDeactivateAudioSession:")
+        }
+        
+        func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
+            NSLog("provider:timedOutPerformingAction:")
+        }
+        
+        func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+            NSLog("provider:performStartCallAction:")
+            
+            toggleUIState(isEnabled: false, showCallControl: false)
+            
+            audioDevice.isEnabled = false
+            audioDevice.block();
+            
+            provider.reportOutgoingCall(with: action.callUUID, startedConnectingAt: Date())
+            
+            self.performVoiceCall(uuid: action.callUUID, client: "") { (success) in
+                if (success) {
+                    provider.reportOutgoingCall(with: action.callUUID, connectedAt: Date())
+                    action.fulfill()
                 } else {
-                    print("Failed to report incoming call successfully: \(error?.localizedDescription ?? "").")
+                    action.fail()
                 }
             }
         }
-    }
-
-    func performEndCallAction(with uuid: UUID?) {
-        var endCallAction: CXEndCallAction? = nil
-        if let uuid = uuid {
-            endCallAction = CXEndCallAction(call: uuid)
-        }
-        var transaction: CXTransaction? = nil
-        if let endCallAction = endCallAction {
-            transaction = CXTransaction(action: endCallAction)
-        }
-
-        if let transaction = transaction {
-            callKitCallController.request(transaction) { error in
-                if error != nil {
-                    print("EndCallAction transaction request failed: \(error?.localizedDescription ?? "")")
+        
+        func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
+            NSLog("provider:performAnswerCallAction:")
+            
+            audioDevice.isEnabled = false
+            audioDevice.block();
+            
+            self.performAnswerVoiceCall(uuid: action.callUUID) { (success) in
+                if (success) {
+                    action.fulfill()
                 } else {
-                    print("EndCallAction transaction request successful")
+                    action.fail()
+                }
+            }
+            
+            action.fulfill()
+        }
+        
+        func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+            NSLog("provider:performEndCallAction:")
+            
+            if let invite = self.activeCallInvites[action.callUUID.uuidString] {
+                invite.reject()
+                self.activeCallInvites.removeValue(forKey: action.callUUID.uuidString)
+            } else if let call = self.activeCalls[action.callUUID.uuidString] {
+                call.disconnect()
+            } else {
+                NSLog("Unknown UUID to perform end-call action with")
+            }
+            
+            action.fulfill()
+        }
+        
+        func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
+            NSLog("provider:performSetHeldAction:")
+            
+            if let call = self.activeCalls[action.callUUID.uuidString] {
+                call.isOnHold = action.isOnHold
+                action.fulfill()
+            } else {
+                action.fail()
+            }
+        }
+        
+        func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
+            NSLog("provider:performSetMutedAction:")
+            
+            if let call = self.activeCalls[action.callUUID.uuidString] {
+                call.isMuted = action.isMuted
+                action.fulfill()
+            } else {
+                action.fail()
+            }
+        }
+        
+        // MARK: Call Kit Actions
+        func performStartCallAction(uuid: UUID, handle: String) {
+            let callHandle = CXHandle(type: .generic, value: handle)
+            let startCallAction = CXStartCallAction(call: uuid, handle: callHandle)
+            let transaction = CXTransaction(action: startCallAction)
+            
+            callKitCallController?.request(transaction)  { error in
+                if let error = error {
+                    NSLog("StartCallAction transaction request failed: \(error.localizedDescription)")
+                    return
+                }
+                
+                NSLog("StartCallAction transaction request successful")
+                
+                let callUpdate = CXCallUpdate()
+                callUpdate.remoteHandle = callHandle
+                callUpdate.supportsDTMF = true
+                callUpdate.supportsHolding = true
+                callUpdate.supportsGrouping = false
+                callUpdate.supportsUngrouping = false
+                callUpdate.hasVideo = false
+                
+                self.callKitProvider?.reportCall(with: uuid, updated: callUpdate)
+            }
+        }
+        
+        func reportIncomingCall(from: String, uuid: UUID) {
+            let callHandle = CXHandle(type: .generic, value: from)
+            
+            let callUpdate = CXCallUpdate()
+            callUpdate.remoteHandle = callHandle
+            callUpdate.supportsDTMF = true
+            callUpdate.supportsHolding = true
+            callUpdate.supportsGrouping = false
+            callUpdate.supportsUngrouping = false
+            callUpdate.hasVideo = false
+            
+            callKitProvider?.reportNewIncomingCall(with: uuid, update: callUpdate) { error in
+                if let error = error {
+                    NSLog("Failed to report incoming call successfully: \(error.localizedDescription).")
+                } else {
+                    NSLog("Incoming call successfully reported.")
                 }
             }
         }
-    }
-
-    func performVoiceCall(with uuid: UUID?, client: String?, completion completionHandler: @escaping (_ success: Bool) -> Void) {
-
-        weak var weakSelf = self
-        let connectOptions = TVOConnectOptions(accessToken: accessToken, block: { builder in
-                let strongSelf = weakSelf
-                if let outgoingCallParams = strongSelf?.outgoingCallParams["To"] {
-                    builder?.params = [
-                    kTwimlParamTo: outgoingCallParams
-                    ]
+        
+        func performEndCallAction(uuid: UUID) {
+            
+            let endCallAction = CXEndCallAction(call: uuid)
+            let transaction = CXTransaction(action: endCallAction)
+            
+            callKitCallController?.request(transaction) { error in
+                if let error = error {
+                    NSLog("EndCallAction transaction request failed: \(error.localizedDescription).")
+                } else {
+                    NSLog("EndCallAction transaction request successful")
                 }
-                builder?.uuid = uuid
-            })
-        call = TwilioVoice.connect(with: connectOptions, delegate: self)
-        callKitCompletionCallback = completionHandler
-    }
-
-    
-    
-    func performAnswerVoiceCall(with uuid: UUID?, completion completionHandler: @escaping (_ success: Bool) -> Void) {
-        weak var weakSelf = self
-        let acceptOptions = TVOAcceptOptions(callInvite: callInvite, block: { builder in
-                let strongSelf = weakSelf
-                builder?.uuid = strongSelf?.callInvite.uuid
-            })
-
-        call = callInvite.accept(with: acceptOptions, delegate: self)
-
-        if !call {
-            completionHandler(false)
-        } else {
-            callKitCompletionCallback = completionHandler
+            }
         }
-
-        callInvite = nil
-        incomingPushHandled()
+        
+        func performVoiceCall(uuid: UUID, client: String?, completionHandler: @escaping (Bool) -> Swift.Void) {
+            guard let accessToken = fetchAccessToken() else {
+                completionHandler(false)
+                return
+            }
+            
+            let connectOptions: TVOConnectOptions = TVOConnectOptions(accessToken: accessToken) { (builder) in
+                builder.params = [twimlParamTo : "outgoing text thing "]
+                builder.uuid = uuid
+            }
+            let call = TwilioVoice.connect(with: connectOptions, delegate: self)
+            self.activeCall = call
+            self.activeCalls[call.uuid.uuidString] = call
+            self.callKitCompletionCallback = completionHandler
+        }
+        
+        func performAnswerVoiceCall(uuid: UUID, completionHandler: @escaping (Bool) -> Swift.Void) {
+            if let callInvite = self.activeCallInvites[uuid.uuidString] {
+                let acceptOptions: TVOAcceptOptions = TVOAcceptOptions(callInvite: callInvite) { (builder) in
+                    builder.uuid = callInvite.uuid
+                }
+                let call = callInvite.accept(with: acceptOptions, delegate: self)
+                self.activeCall = call
+                self.activeCalls[call.uuid.uuidString] = call
+                self.callKitCompletionCallback = completionHandler
+                
+                self.activeCallInvites.removeValue(forKey: uuid.uuidString)
+                
+                guard #available(iOS 13, *) else {
+                    self.incomingPushHandled()
+                    return
+                }
+            } else {
+                NSLog("No CallInvite matches the UUID")
+            }
+        }
+        
+        // MARK: Ringtone
+        func playRingback() {
+            let ringtonePath = URL(fileURLWithPath: Bundle.main.path(forResource: "ringtone", ofType: "wav")!)
+            do {
+                self.ringtonePlayer = try AVAudioPlayer(contentsOf: ringtonePath)
+                self.ringtonePlayer?.delegate = self
+                self.ringtonePlayer?.numberOfLoops = -1
+                
+                self.ringtonePlayer?.volume = 1.0
+                self.ringtonePlayer?.play()
+            } catch {
+                NSLog("Failed to initialize audio player")
+            }
+        }
+        
+        func stopRingback() {
+            if (self.ringtonePlayer?.isPlaying == false) {
+                return
+            }
+            
+            self.ringtonePlayer?.stop()
+        }
+        
+        func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+            if (flag) {
+                NSLog("Audio player finished playing successfully");
+            } else {
+                NSLog("Audio player finished playing with some error");
+            }
+        }
+        
+        func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+            NSLog("Decode error occurred: \(error?.localizedDescription)");
+        }
+        
+        
     }
-
+    
+    
+    
     
 }
