@@ -72,7 +72,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         
         
         func initializePlugin() {
-            //        print("Initializing plugin")
+                    print("Initializing plugin")
             //        let debugTwilioPreference = Bundle.main.object(forInfoDictionaryKey: "TVPEnableDebugging")?.uppercased()
             //        if (debugTwilioPreference == "YES") || (debugTwilioPreference == "TRUE") {
             //            TwilioVoice.logLevel = TVOLogLevelDebug
@@ -165,7 +165,6 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
                     callKitCallController = CXCallController()
                 }
                 
-                //            javascriptCallback("onclientinitialized")
             }
             
         }
@@ -225,60 +224,13 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
         
         
-        
-        
-        
-        
-        
-        
-        //    required init?(coder aDecoder: NSCoder) {
-        //          isSpinning = false
-        //          voipRegistry = PKPushRegistry.init(queue: DispatchQueue.main)
-        
-        //          let configuration = CXProviderConfiguration(localizedName: "Quickstart")
-        //          configuration.maximumCallGroups = 1
-        //          configuration.maximumCallsPerCallGroup = 1
-        //          if let callKitIcon = UIImage(named: "iconMask80") {
-        //              configuration.iconTemplateImageData = UIImagePNGRepresentation(callKitIcon)
-        //          }
-        
-        //          callKitProvider = CXProvider(configuration: configuration)
-        //          callKitCallController = CXCallController()
-        
-        //          super.init(coder: aDecoder)
-        
-        //          callKitProvider.setDelegate(self, queue: nil)
-        
-        //          voipRegistry.delegate = self
-        //          voipRegistry.desiredPushTypes = Set([PKPushType.voIP])
-        //      }
-        
-        
-        
         deinit {
             // CallKit has an odd API contract where the developer must call invalidate or the CXProvider is leaked.
             if let callKitProvider = self.callKitProvider {
                 callKitProvider.invalidate()
             }
         }
-        
-        //      override func viewDidLoad() {
-        //          super.viewDidLoad()
-        //
-        //          toggleUIState(isEnabled: true, showCallControl: false)
-        //
-        //          /*
-        //           * The important thing to remember when providing a TVOAudioDevice is that the device must be set
-        //           * before performing any other actions with the SDK (such as connecting a Call, or accepting an incoming Call).
-        //           * In this case we've already initialized our own `TVODefaultAudioDevice` instance which we will now set.
-        //           */
-        //          TwilioVoice.audioDevice = audioDevice
-        //      }
-        
-        //
-        //      override func didReceiveMemoryWarning() {
-        //          super.didReceiveMemoryWarning()
-        //      }
+
         
         func fetchAccessToken() -> String? {
             let endpointWithIdentity = String(format: "%@?identity=%@", accessTokenEndpoint, identity)
@@ -290,15 +242,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
         
         func toggleUIState(isEnabled: Bool, showCallControl: Bool) {
-            print("toggle")
-            //          placeCallButton.isEnabled = isEnabled
-            //          if (showCallControl) {
-            //              callControlView.isHidden = false
-            //              muteSwitch.isOn = false
-            //              speakerSwitch.isOn = true
-            //          } else {
-            //              callControlView.isHidden = true
-            //          }
+            print("toggle ui state")
         }
         
         @IBAction func mainButtonPressed(_ sender: Any) {
