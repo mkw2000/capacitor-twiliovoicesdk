@@ -155,7 +155,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
                     configuration.maximumCallGroups = 1
                     configuration.maximumCallsPerCallGroup = 1
                     if let callkitIcon = UIImage(named: "logo.png") {
-                        configuration.iconTemplateImageData = UIImagePNGRepresentation(callkitIcon)
+                        configuration.iconTemplateImageData = callkitIcon.pngData()
                     }
                     configuration.ringtoneSound = "traditionalring.mp3"
                     
@@ -196,8 +196,8 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
                         let goToSettings: UIAlertAction = UIAlertAction(title: "Settings",
                                                                         style: .default,
                                                                         handler: { (action) in
-                                                                            UIApplication.shared.open(URL(string: UIApplicationOpenSettingsURLString)!,
-                                                                                                      options: [UIApplicationOpenURLOptionUniversalLinksOnly: false],
+                                                                            UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!,
+                                                                                                      options: [UIApplication.OpenExternalURLOptionsKey.universalLinksOnly: false],
                                                                                                       completionHandler: nil)
                         })
                         alertController.addAction(goToSettings)
@@ -270,8 +270,8 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
                         let goToSettings: UIAlertAction = UIAlertAction(title: "Settings",
                                                                         style: .default,
                                                                         handler: { (action) in
-                                                                            UIApplication.shared.open(URL(string: UIApplicationOpenSettingsURLString)!,
-                                                                                                      options: [UIApplicationOpenURLOptionUniversalLinksOnly: false],
+                                                                            UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!,
+                                                                                                      options: [UIApplication.OpenExternalURLOptionsKey.universalLinksOnly: false],
                                                                                                       completionHandler: nil)
                         })
                         alertController.addAction(goToSettings)
@@ -292,7 +292,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
         
         func checkRecordPermission(completion: @escaping (_ permissionGranted: Bool) -> Void) {
-            let permissionStatus: AVAudioSessionRecordPermission = AVAudioSession.sharedInstance().recordPermission()
+            let permissionStatus: AVAudioSession.RecordPermission = AVAudioSession.sharedInstance().recordPermission
             
             switch permissionStatus {
             case AVAudioSessionRecordPermission.granted:
@@ -533,7 +533,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
                     reason = .failed
                 }
                 
-                let callHandle = CXHandle(type: .generic, value: handle)
+                let callHandle = CXHandle(type: .generic, value: "placeholder")
                 let callUpdate = CXCallUpdate()
                 callUpdate.remoteHandle = callHandle
                 callUpdate.supportsDTMF = true
