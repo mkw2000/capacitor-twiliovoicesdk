@@ -11,7 +11,7 @@ export interface CapacitorTwilioVoiceSDKPlugin {
     }>;
 
 
-    makeCall(options: {
+    call(options: {
         token?: string;
         params?: any;
       }): Promise<{
@@ -19,7 +19,6 @@ export interface CapacitorTwilioVoiceSDKPlugin {
       }>;
     
       init(options?: any): Promise<{value: string}>;
-
 
       sendDigits(digits?: string): Promise<{value: string}>;
     
