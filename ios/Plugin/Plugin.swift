@@ -71,7 +71,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         private var maskIncomingPhoneNumber = false
         
         
-        func initializePlugin() {
+       @objc func initializePlugin() {
                     print("Initializing plugin")
             //        let debugTwilioPreference = Bundle.main.object(forInfoDictionaryKey: "TVPEnableDebugging")?.uppercased()
             //        if (debugTwilioPreference == "YES") || (debugTwilioPreference == "TRUE") {
@@ -134,7 +134,8 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        func initialize(accessToken: String?) {
+       @objc func initialize(_ call: CAPPluginCall?) {
+            let accessToken = call.getString("token")
             print("Initializing with an access token")
             
             // retain this command as the callback to use for raising Twilio events
@@ -170,8 +171,8 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
         
         
-        func call(token: String) {
-            
+       @objc func makeCall(_ call: CAPPluginCall?) {
+        let token = call.getString("token")
             if let call = self.activeCall {
                 self.userInitiatedDisconnect = true
                 performEndCallAction(uuid: call.uuid)
@@ -219,8 +220,10 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             
         }
         
-        func sendDigits() {
-            
+       @objc func sendDigits(_ call: CAPPluginCall?) {
+            if command?.arguments.count() ?? 0 > 0 {
+                call.sendDigits(command?.arguments[0] as? CDVInvokedUrlCommand)
+            }
         }
         
         
@@ -232,7 +235,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
 
         
-        func fetchAccessToken() -> String? {
+       @objc func fetchAccessToken() -> String? {
             let endpointWithIdentity = String(format: "%@?identity=%@", accessTokenEndpoint, identity)
             guard let accessTokenURL = URL(string: baseURLString + endpointWithIdentity) else {
                 return nil
@@ -241,57 +244,57 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             return try? String.init(contentsOf: accessTokenURL, encoding: .utf8)
         }
         
-        func toggleUIState(isEnabled: Bool, showCallControl: Bool) {
+       @objc func toggleUIState(isEnabled: Bool, showCallControl: Bool) {
             print("toggle ui state")
         }
         
-        @IBAction func mainButtonPressed(_ sender: Any) {
-            if let call = self.activeCall {
-                self.userInitiatedDisconnect = true
-                performEndCallAction(uuid: call.uuid)
-                self.toggleUIState(isEnabled: false, showCallControl: false)
-            } else {
-                let uuid = UUID()
-                let handle = "Voice Bot"
-                
-                self.checkRecordPermission { (permissionGranted) in
-                    if (!permissionGranted) {
-                        let alertController: UIAlertController = UIAlertController(title: "Voice Quick Start",
-                                                                                   message: "Microphone permission not granted",
-                                                                                   preferredStyle: .alert)
-                        
-                        let continueWithMic: UIAlertAction = UIAlertAction(title: "Continue without microphone",
-                                                                           style: .default,
-                                                                           handler: { (action) in
-                                                                            self.performStartCallAction(uuid: uuid, handle: handle)
-                        })
-                        alertController.addAction(continueWithMic)
-                        
-                        let goToSettings: UIAlertAction = UIAlertAction(title: "Settings",
-                                                                        style: .default,
-                                                                        handler: { (action) in
-                                                                            UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!,
-                                                                                                      options: [UIApplication.OpenExternalURLOptionsKey.universalLinksOnly: false],
-                                                                                                      completionHandler: nil)
-                        })
-                        alertController.addAction(goToSettings)
-                        
-                        let cancel: UIAlertAction = UIAlertAction(title: "Cancel",
-                                                                  style: .cancel,
-                                                                  handler: { (action) in
-                                                                    self.toggleUIState(isEnabled: true, showCallControl: false)
-                        })
-                        alertController.addAction(cancel)
-                        
-                        self.present(alertController, animated: true, completion: nil)
-                    } else {
-                        self.performStartCallAction(uuid: uuid, handle: handle)
-                    }
-                }
-            }
-        }
+//        @IBAction func mainButtonPressed(_ sender: Any) {
+//            if let call = self.activeCall {
+//                self.userInitiatedDisconnect = true
+//                performEndCallAction(uuid: call.uuid)
+//                self.toggleUIState(isEnabled: false, showCallControl: false)
+//            } else {
+//                let uuid = UUID()
+//                let handle = "Voice Bot"
+//
+//                self.checkRecordPermission { (permissionGranted) in
+//                    if (!permissionGranted) {
+//                        let alertController: UIAlertController = UIAlertController(title: "Voice Quick Start",
+//                                                                                   message: "Microphone permission not granted",
+//                                                                                   preferredStyle: .alert)
+//
+//                        let continueWithMic: UIAlertAction = UIAlertAction(title: "Continue without microphone",
+//                                                                           style: .default,
+//                                                                           handler: { (action) in
+//                                                                            self.performStartCallAction(uuid: uuid, handle: handle)
+//                        })
+//                        alertController.addAction(continueWithMic)
+//
+//                        let goToSettings: UIAlertAction = UIAlertAction(title: "Settings",
+//                                                                        style: .default,
+//                                                                        handler: { (action) in
+//                                                                            UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!,
+//                                                                                                      options: [UIApplication.OpenExternalURLOptionsKey.universalLinksOnly: false],
+//                                                                                                      completionHandler: nil)
+//                        })
+//                        alertController.addAction(goToSettings)
+//
+//                        let cancel: UIAlertAction = UIAlertAction(title: "Cancel",
+//                                                                  style: .cancel,
+//                                                                  handler: { (action) in
+//                                                                    self.toggleUIState(isEnabled: true, showCallControl: false)
+//                        })
+//                        alertController.addAction(cancel)
+//
+//                        self.present(alertController, animated: true, completion: nil)
+//                    } else {
+//                        self.performStartCallAction(uuid: uuid, handle: handle)
+//                    }
+//                }
+//            }
+//        }
         
-        func checkRecordPermission(completion: @escaping (_ permissionGranted: Bool) -> Void) {
+       @objc func checkRecordPermission(completion: @escaping (_ permissionGranted: Bool) -> Void) {
             let permissionStatus: AVAudioSession.RecordPermission = AVAudioSession.sharedInstance().recordPermission
             
             switch permissionStatus {
@@ -316,25 +319,23 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        @IBAction func muteSwitchToggled(_ sender: UISwitch) {
-            // The sample app supports toggling mute from app UI only on the last connected call.
-            if let call = self.activeCall {
-                call.isMuted = sender.isOn
-            }
-        }
+//        @IBAction func muteSwitchToggled(_ sender: UISwitch) {
+//            // The sample app supports toggling mute from app UI only on the last connected call.
+//            if let call = self.activeCall {
+//                call.isMuted = sender.isOn
+//            }
+//        }
         
-        @IBAction func speakerSwitchToggled(_ sender: UISwitch) {
-            toggleAudioRoute(toSpeaker: sender.isOn)
-        }
+//3
         
         // MARK: UITextFieldDelegate
-        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+       @objc func textFieldShouldReturn(_ textField: UITextField) -> Bool {
             return true
         }
         
         
         // MARK: PKPushRegistryDelegate
-        func pushRegistry(_ registry: PKPushRegistry, didUpdate credentials: PKPushCredentials, for type: PKPushType) {
+       @objc func pushRegistry(_ registry: PKPushRegistry, didUpdate credentials: PKPushCredentials, for type: PKPushType) {
             NSLog("pushRegistry:didUpdatePushCredentials:forType:")
             
             if (type != .voIP) {
@@ -359,7 +360,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             self.deviceTokenString = deviceToken
         }
         
-        func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
+       @objc func pushRegistry(_ registry: PKPushRegistry, didInvalidatePushTokenFor type: PKPushType) {
             NSLog("pushRegistry:didInvalidatePushTokenForType:")
             
             if (type != .voIP) {
@@ -386,7 +387,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
          * Try using the `pushRegistry:didReceiveIncomingPushWithPayload:forType:withCompletionHandler:` method if
          * your application is targeting iOS 11. According to the docs, this delegate method is deprecated by Apple.
          */
-        func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType) {
+       @objc func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType) {
             NSLog("pushRegistry:didReceiveIncomingPushWithPayload:forType:")
             
             if (type == PKPushType.voIP) {
@@ -399,7 +400,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
          * This delegate method is available on iOS 11 and above. Call the completion handler once the
          * notification payload is passed to the `TwilioVoice.handleNotification()` method.
          */
-        func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
+       @objc func pushRegistry(_ registry: PKPushRegistry, didReceiveIncomingPushWith payload: PKPushPayload, for type: PKPushType, completion: @escaping () -> Void) {
             NSLog("pushRegistry:didReceiveIncomingPushWithPayload:forType:completion:")
             
             if (type == PKPushType.voIP) {
@@ -419,7 +420,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        func incomingPushHandled() {
+       @objc func incomingPushHandled() {
             if let completion = self.incomingPushCompletionCallback {
                 completion()
                 self.incomingPushCompletionCallback = nil
@@ -427,7 +428,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
         
         // MARK: TVONotificaitonDelegate
-        func callInviteReceived(_ callInvite: TVOCallInvite) {
+       @objc func callInviteReceived(_ callInvite: TVOCallInvite) {
             NSLog("callInviteReceived:")
             
             var from:String = callInvite.from ?? "Voice Bot"
@@ -438,7 +439,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             self.activeCallInvites[callInvite.uuid.uuidString] = callInvite
         }
         
-        func cancelledCallInviteReceived(_ cancelledCallInvite: TVOCancelledCallInvite, error: Error) {
+       @objc func cancelledCallInviteReceived(_ cancelledCallInvite: TVOCancelledCallInvite, error: Error) {
             NSLog("cancelledCallInviteCanceled:error:, error: \(error.localizedDescription)")
             
             if (self.activeCallInvites!.isEmpty) {
@@ -460,7 +461,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
         
         // MARK: TVOCallDelegate
-        func callDidStartRinging(_ call: TVOCall) {
+       @objc func callDidStartRinging(_ call: TVOCall) {
             NSLog("callDidStartRinging:")
             
             //          self.placeCallButton.setTitle("Ringing", for: .normal)
@@ -476,7 +477,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        func callDidConnect(_ call: TVOCall) {
+       @objc func callDidConnect(_ call: TVOCall) {
             NSLog("callDidConnect:")
             
             if (self.playCustomRingback) {
@@ -492,7 +493,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             toggleAudioRoute(toSpeaker: true)
         }
         
-        func call(_ call: TVOCall, isReconnectingWithError error: Error) {
+       @objc func call(_ call: TVOCall, isReconnectingWithError error: Error) {
             NSLog("call:isReconnectingWithError:")
             
             //          self.placeCallButton.setTitle("Reconnecting", for: .normal)
@@ -500,7 +501,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             toggleUIState(isEnabled: false, showCallControl: false)
         }
         
-        func callDidReconnect(_ call: TVOCall) {
+       @objc func callDidReconnect(_ call: TVOCall) {
             NSLog("callDidReconnect:")
             
             //          self.placeCallButton.setTitle("Hang Up", for: .normal)
@@ -508,7 +509,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             toggleUIState(isEnabled: true, showCallControl: true)
         }
         
-        func call(_ call: TVOCall, didFailToConnectWithError error: Error) {
+       @objc func call(_ call: TVOCall, didFailToConnectWithError error: Error) {
             NSLog("Call failed to connect: \(error.localizedDescription)")
             
             if let completion = self.callKitCompletionCallback {
@@ -519,7 +520,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             callDisconnected(call)
         }
         
-        func call(_ call: TVOCall, didDisconnectWithError error: Error?) {
+       @objc func call(_ call: TVOCall, didDisconnectWithError error: Error?) {
             if let error = error {
                 NSLog("Call failed: \(error.localizedDescription)")
             } else {
@@ -549,7 +550,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             callDisconnected(call)
         }
         
-        func callDisconnected(_ call: TVOCall) {
+       @objc func callDisconnected(_ call: TVOCall) {
             if (call == self.activeCall) {
                 self.activeCall = nil
             }
@@ -567,7 +568,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         
         
         // MARK: AVAudioSession
-        func toggleAudioRoute(toSpeaker: Bool) {
+       @objc func toggleAudioRoute(toSpeaker: Bool) {
             // The mode set by the Voice SDK is "VoiceChat" so the default audio route is the built-in receiver. Use port override to switch the route.
             audioDevice.block = {
                 kTVODefaultAVAudioSessionConfigurationBlock()
@@ -588,29 +589,29 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         
         
         // MARK: CXProviderDelegate
-        func providerDidReset(_ provider: CXProvider) {
+       @objc func providerDidReset(_ provider: CXProvider) {
             NSLog("providerDidReset:")
             audioDevice.isEnabled = true
         }
         
-        func providerDidBegin(_ provider: CXProvider) {
+       @objc func providerDidBegin(_ provider: CXProvider) {
             NSLog("providerDidBegin")
         }
         
-        func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
+       @objc func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession) {
             NSLog("provider:didActivateAudioSession:")
             audioDevice.isEnabled = true
         }
         
-        func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+       @objc func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
             NSLog("provider:didDeactivateAudioSession:")
         }
         
-        func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
+       @objc func provider(_ provider: CXProvider, timedOutPerforming action: CXAction) {
             NSLog("provider:timedOutPerformingAction:")
         }
         
-        func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
+       @objc func provider(_ provider: CXProvider, perform action: CXStartCallAction) {
             NSLog("provider:performStartCallAction:")
             
             toggleUIState(isEnabled: false, showCallControl: false)
@@ -630,7 +631,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
+       @objc func provider(_ provider: CXProvider, perform action: CXAnswerCallAction) {
             NSLog("provider:performAnswerCallAction:")
             
             audioDevice.isEnabled = false
@@ -647,7 +648,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             action.fulfill()
         }
         
-        func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
+       @objc func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
             NSLog("provider:performEndCallAction:")
             
             if let invite = self.activeCallInvites[action.callUUID.uuidString] {
@@ -662,7 +663,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             action.fulfill()
         }
         
-        func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
+       @objc func provider(_ provider: CXProvider, perform action: CXSetHeldCallAction) {
             NSLog("provider:performSetHeldAction:")
             
             if let call = self.activeCalls[action.callUUID.uuidString] {
@@ -673,7 +674,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
+       @objc func provider(_ provider: CXProvider, perform action: CXSetMutedCallAction) {
             NSLog("provider:performSetMutedAction:")
             
             if let call = self.activeCalls[action.callUUID.uuidString] {
@@ -685,7 +686,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
         
         // MARK: Call Kit Actions
-        func performStartCallAction(uuid: UUID, handle: String) {
+       @objc func performStartCallAction(uuid: UUID, handle: String) {
             let callHandle = CXHandle(type: .generic, value: handle)
             let startCallAction = CXStartCallAction(call: uuid, handle: callHandle)
             let transaction = CXTransaction(action: startCallAction)
@@ -710,7 +711,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        func reportIncomingCall(from: String, uuid: UUID) {
+       @objc func reportIncomingCall(from: String, uuid: UUID) {
             let callHandle = CXHandle(type: .generic, value: from)
             
             let callUpdate = CXCallUpdate()
@@ -730,7 +731,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        func performEndCallAction(uuid: UUID) {
+       @objc func performEndCallAction(uuid: UUID) {
             
             let endCallAction = CXEndCallAction(call: uuid)
             let transaction = CXTransaction(action: endCallAction)
@@ -744,7 +745,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        func performVoiceCall(uuid: UUID, client: String?, completionHandler: @escaping (Bool) -> Swift.Void) {
+       @objc func performVoiceCall(uuid: UUID, client: String?, completionHandler: @escaping (Bool) -> Swift.Void) {
             guard let accessToken = fetchAccessToken() else {
                 completionHandler(false)
                 return
@@ -760,7 +761,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             self.callKitCompletionCallback = completionHandler
         }
         
-        func performAnswerVoiceCall(uuid: UUID, completionHandler: @escaping (Bool) -> Swift.Void) {
+       @objc func performAnswerVoiceCall(uuid: UUID, completionHandler: @escaping (Bool) -> Swift.Void) {
             if let callInvite = self.activeCallInvites[uuid.uuidString] {
                 let acceptOptions: TVOAcceptOptions = TVOAcceptOptions(callInvite: callInvite) { (builder) in
                     builder.uuid = callInvite.uuid
@@ -782,7 +783,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
         
         // MARK: Ringtone
-        func playRingback() {
+       @objc func playRingback() {
             let ringtonePath = URL(fileURLWithPath: Bundle.main.path(forResource: "ringtone", ofType: "wav")!)
             do {
                 self.ringtonePlayer = try AVAudioPlayer(contentsOf: ringtonePath)
@@ -796,7 +797,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        func stopRingback() {
+       @objc func stopRingback() {
             if (self.ringtonePlayer?.isPlaying == false) {
                 return
             }
@@ -804,7 +805,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             self.ringtonePlayer?.stop()
         }
         
-        func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+       @objc func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
             if (flag) {
                 NSLog("Audio player finished playing successfully");
             } else {
@@ -812,7 +813,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             }
         }
         
-        func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+       @objc func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
             NSLog("Decode error occurred: \(error?.localizedDescription)");
         }
         

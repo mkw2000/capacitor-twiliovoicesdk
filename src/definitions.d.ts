@@ -12,7 +12,7 @@ export interface CapacitorTwilioVoiceSDKPlugin {
 }>;
 
 
-call(options: {
+makeCall(options: {
     token?: string;
     params?: any;
   }): Promise<{
