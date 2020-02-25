@@ -237,7 +237,8 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
              ])
             
         } else {
-            call.reject()
+            call.reject(
+            )
         }
         
         
