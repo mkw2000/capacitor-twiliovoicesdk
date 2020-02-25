@@ -231,7 +231,16 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         
         if digits != nil {
             self.call?.sendDigits(digits!)
+            
+            call.resolve([
+                 "value": "yo dude"
+             ])
+            
+        } else {
+            call.reject()
         }
+        
+        
         
         }
         
