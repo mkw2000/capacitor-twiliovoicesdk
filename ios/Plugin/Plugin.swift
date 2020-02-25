@@ -14,9 +14,8 @@ let twimlParamTo = "to"
 
 
 @objc(CapacitorTwilioVoiceSDK)
-public class CapacitorTwilioVoiceSDK: CAPPlugin  {
-    
-    class TwilioVoicePlugin: UIViewController, PKPushRegistryDelegate, TVONotificationDelegate, TVOCallDelegate, CXProviderDelegate, UITextFieldDelegate, AVAudioPlayerDelegate {
+public class CapacitorTwilioVoiceSDK: CAPPlugin, UIViewController, PKPushRegistryDelegate, TVONotificationDelegate, TVOCallDelegate, CXProviderDelegate, UITextFieldDelegate, AVAudioPlayerDelegate  {
+ 
         
         var deviceTokenString: String? = ""
         
@@ -836,10 +835,6 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
             NSLog("Decode error occurred: \(error?.localizedDescription)");
         }
         
-        
-    }
-    
-    
     
     
 }
