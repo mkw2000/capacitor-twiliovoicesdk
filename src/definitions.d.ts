@@ -19,7 +19,7 @@ makeCall(options: {
     value: string;
   }>;
 
-  init(options?: any): Promise<{value: string}>;
+  initialize(token?: any): Promise<{value: string}>;
 
   sendDigits(digits?: string): Promise<{value: string}>;
 

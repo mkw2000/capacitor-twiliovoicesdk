@@ -6,7 +6,7 @@
 CAP_PLUGIN(CapacitorTwilioVoiceSDK, "CapacitorTwilioVoiceSDK",
 CAP_PLUGIN_METHOD(echo, CAPPluginReturnPromise);
 CAP_PLUGIN_METHOD(makeCall, CAPPluginReturnPromise);
-CAP_PLUGIN_METHOD(init, CAPPluginReturnPromise);
+CAP_PLUGIN_METHOD(initialize, CAPPluginReturnPromise);
 CAP_PLUGIN_METHOD(sendDigits, CAPPluginReturnPromise);
 CAP_PLUGIN_METHOD(disconnect, CAPPluginReturnPromise);
 CAP_PLUGIN_METHOD(rejectCallInvite, CAPPluginReturnPromise);

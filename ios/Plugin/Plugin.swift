@@ -165,6 +165,10 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
                 }
                 
             }
+        
+        call.resolve([
+            "value": "yo dude"
+        ])
             
         }
         
@@ -215,6 +219,10 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
                     }
                 }
             }
+        
+        call.resolve([
+             "value": "yo dude"
+         ])
             
         }
         
