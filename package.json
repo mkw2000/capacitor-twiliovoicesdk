@@ -1,6 +1,6 @@
 {
   "name": "capacitor-twiliovoicesdk",
-  "version": "0.1.6",
+  "version": "0.1.8",
   "description": "Capacitor plugin for Twilio Programmable Voice SDK",
   "main": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
