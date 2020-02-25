@@ -11,10 +11,8 @@ let baseURLString = ""
 let accessTokenEndpoint = "/accessToken"
 let identity = "alice"
 let twimlParamTo = "to"
-/**
- * Please read the Capacitor iOS Plugin Development Guide
- * here: https://capacitor.ionicframework.com/docs/plugins/ios
- */
+
+
 @objc(CapacitorTwilioVoiceSDK)
 public class CapacitorTwilioVoiceSDK: CAPPlugin  {
     
@@ -135,7 +133,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
         
        @objc func initialize(_ call: CAPPluginCall?) {
-            let accessToken = call.getString("token")
+        let accessToken = call!.getString("token")
             print("Initializing with an access token")
             
             // retain this command as the callback to use for raising Twilio events
@@ -172,7 +170,7 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         
         
        @objc func makeCall(_ call: CAPPluginCall?) {
-        let token = call.getString("token")
+        let token = call?.getString("token")
             if let call = self.activeCall {
                 self.userInitiatedDisconnect = true
                 performEndCallAction(uuid: call.uuid)
@@ -221,9 +219,12 @@ public class CapacitorTwilioVoiceSDK: CAPPlugin  {
         }
         
        @objc func sendDigits(_ call: CAPPluginCall?) {
-            if command?.arguments.count() ?? 0 > 0 {
-                call.sendDigits(command?.arguments[0] as? CDVInvokedUrlCommand)
-            }
+        let digits = call?.getString("digits");
+        
+        if digits != nil {
+            self.call?.sendDigits(digits!)
+        }
+        
         }
         
         
